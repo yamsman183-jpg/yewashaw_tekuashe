@@ -149,6 +149,54 @@
     const finalScoreEl = document.getElementById('finalScoreEl');
     const retryBtn = document.getElementById('retryBtn');
 
+    // Classic Arcade Sound Engine (Web Audio API)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function ensureAudio() {
+      if (!audioCtx && AudioCtx) {
+        audioCtx = new AudioCtx();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+    }
+
+    function playTone(startFreq, endFreq, duration, type = 'square', volume = 0.08) {
+      if (!AudioCtx) return;
+      ensureAudio();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(startFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(40, endFreq), now + duration);
+
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    function soundShoot() {
+      playTone(760, 220, 0.08, 'square', 0.06);
+    }
+
+    function soundHit() {
+      playTone(320, 640, 0.09, 'triangle', 0.09);
+    }
+
+    function soundDamage() {
+      playTone(190, 75, 0.18, 'sawtooth', 0.09);
+    }
+
     let w = canvas.width = window.innerWidth;
     let h = canvas.height = window.innerHeight;
 
@@ -169,8 +217,15 @@
 
     function bindButton(id, prop) {
       const el = document.getElementById(id);
-      const down = (e) => { e.preventDefault(); keys[prop] = true; };
-      const up = (e) => { e.preventDefault(); keys[prop] = false; };
+      const down = (e) => {
+        e.preventDefault();
+        ensureAudio();
+        keys[prop] = true;
+      };
+      const up = (e) => {
+        e.preventDefault();
+        keys[prop] = false;
+      };
       el.addEventListener('touchstart', down, { passive: false });
       el.addEventListener('touchend', up, { passive: false });
       el.addEventListener('touchcancel', up, { passive: false });
@@ -193,6 +248,7 @@
     let sparks = [];
 
     function reset() {
+      ensureAudio();
       score = 0;
       hp = 100;
       over = false;
@@ -245,6 +301,7 @@
 
       if (keys.fire && now - lastShot > 200) {
         bullets.push({ x: player.x, y: player.y - 24, speed: 11 });
+        soundShoot();
         lastShot = now;
       }
 
@@ -265,6 +322,7 @@
           const b = bullets[j];
           if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + 6) {
             addSparks(e.x, e.y, '#facc15');
+            soundHit();
             bullets.splice(j, 1);
             enemies.splice(i, 1);
             score += 10;
@@ -277,6 +335,7 @@
 
         if (e.y > h - 110) {
           addSparks(e.x, e.y, '#f87171');
+          soundDamage();
           enemies.splice(i, 1);
           hp = Math.max(0, hp - 10);
           hpEl.textContent = `ህይወት: ${hp}`;
@@ -304,7 +363,6 @@
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      // Subtle classic arcade grid
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
       ctx.lineWidth = 1;
       for (let x = 0; x <= w; x += 48) {
@@ -320,7 +378,6 @@
         ctx.stroke();
       }
 
-      // Ground line
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -330,13 +387,11 @@
     }
 
     function drawPlayer() {
-      // Shadow
       ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
       ctx.beginPath();
       ctx.ellipse(player.x, player.y + 22, 18, 5, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Classic craft / shooter body
       ctx.fillStyle = '#38bdf8';
       ctx.beginPath();
       ctx.moveTo(player.x, player.y - 22);
@@ -345,7 +400,6 @@
       ctx.closePath();
       ctx.fill();
 
-      // Inner highlight
       ctx.fillStyle = '#e0f2fe';
       ctx.beginPath();
       ctx.moveTo(player.x, player.y - 12);
@@ -376,7 +430,6 @@
     function draw() {
       drawBackground();
 
-      // Bullets
       ctx.fillStyle = '#fde047';
       bullets.forEach(b => {
         ctx.fillRect(b.x - 3, b.y - 11, 6, 14);
